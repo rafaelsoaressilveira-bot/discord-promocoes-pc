@@ -1,9 +1,7 @@
-```yaml
-name: Promoções PC
+name: Promocoes PC
 
 on:
   workflow_dispatch:
-
   schedule:
     - cron: "0 12 * * *"
 
@@ -12,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar código
+      - name: Baixar codigo
         uses: actions/checkout@v4
 
       - name: Configurar Python
@@ -20,14 +18,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Instalar dependências
-        run: |
-          pip install -r requirements.txt
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
 
       - name: Executar bot
         env:
           ITAD_API_KEY: ${{ secrets.ITAD_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          python bot.py
-```
+        run: python bot.py

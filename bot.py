@@ -15,7 +15,7 @@ COUNTRY = "BR"
 
 MIN_DISCOUNT = 30
 
-MAX_DEALS = 50
+MAX_DEALS = 500
 
 POSTED_FILE = "posted_deals.json"
 

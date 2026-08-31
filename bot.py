@@ -303,6 +303,12 @@ def extract_deal(deal):
     if not url:
         url = "https://isthereanydeal.com/"
 
+    # Imagem do jogo
+    image_url = (
+        deal.get("assets", {}).get("boxart")
+        or deal.get("assets", {}).get("banner")
+    )
+    
     # Plataformas
     platforms = deal_info.get("platforms", [])
 
@@ -316,6 +322,7 @@ def extract_deal(deal):
         "regular_price": regular_price,
         "discount": discount,
         "url": url,
+        "image_url": image_url,
         "platforms": platforms,
         "type": game_type
     }
@@ -572,22 +579,23 @@ def send_to_discord(deal):
     )
 
     embed = {
+    "title": f"🔥 {title}",
+    "description": description,
+    "url": url,
 
-        "title": f"🔥 {title}",
+    "thumbnail": {
+        "url": deal["image_url"]
+    } if deal.get("image_url") else {},
 
-        "description": description,
+    "color": 0x00FF66,
 
-        "url": url,
+    "footer": {
+        "text": "Promoções PC • IsThereAnyDeal"
+    },
 
-        "color": 0x00FF66,
-
-        "footer": {
-            "text": "Promoções PC • IsThereAnyDeal"
-        },
-
-        "timestamp": datetime.now(
-            timezone.utc
-        ).isoformat()
+    "timestamp": datetime.now(
+        timezone.utc
+    ).isoformat()
     }
 
     payload = {

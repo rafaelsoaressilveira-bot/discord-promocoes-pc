@@ -45,21 +45,35 @@ TARGET_SHOPS = {
 # ============================================================
 
 def load_posted():
+
     if not os.path.exists(POSTED_FILE):
         return set()
 
     try:
-        with open(POSTED_FILE, "r", encoding="utf-8") as file:
+
+        with open(
+            POSTED_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
             return set(json.load(file))
 
     except Exception:
+
         return set()
 
 
 def save_posted(posted):
+
     data = list(posted)[-500:]
 
-    with open(POSTED_FILE, "w", encoding="utf-8") as file:
+    with open(
+        POSTED_FILE,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
         json.dump(
             data,
             file,
@@ -86,7 +100,7 @@ def format_price(value):
 
 
 # ============================================================
-# LOJAS
+# DESCOBRIR LOJAS
 # ============================================================
 
 def get_shop_ids():
@@ -107,11 +121,10 @@ def get_shop_ids():
 
     data = response.json()
 
-    # A API pode retornar uma lista diretamente
     if isinstance(data, list):
+
         shops = data
 
-    # Ou uma lista dentro de uma chave
     elif isinstance(data, dict):
 
         shops = (
@@ -122,6 +135,7 @@ def get_shop_ids():
         )
 
     else:
+
         shops = []
 
     result = {}
@@ -149,7 +163,7 @@ def get_shop_ids():
 
 
 # ============================================================
-# PROMOÇÕES
+# BUSCAR PROMOÇÕES
 # ============================================================
 
 def get_deals(shop_ids):
@@ -161,14 +175,44 @@ def get_deals(shop_ids):
         "Content-Type": "application/json"
     }
 
+    # Windows = plataforma 1
+    #
+    # type = 0 corresponde a jogo.
+    #
+    # cut.min = 50 significa mínimo de 50% OFF.
+    #
+    # O filtro é aplicado pela própria API.
+
     payload = {
+
         "country": COUNTRY,
+
         "offset": 0,
+
         "limit": 200,
+
         "sort": "-cut",
+
         "nondeals": False,
+
         "mature": False,
-        "shops": shop_ids
+
+        "shops": shop_ids,
+
+        "filter": {
+
+            "cut": {
+                "min": MIN_DISCOUNT
+            },
+
+            "platform": [
+                1
+            ],
+
+            "type": [
+                0
+            ]
+        }
     }
 
     response = requests.post(
@@ -182,42 +226,27 @@ def get_deals(shop_ids):
 
     data = response.json()
 
-    if isinstance(data, list):
-        return data
+    # A resposta atual do ITAD usa "list".
 
     if isinstance(data, dict):
+
         deals = data.get("list")
 
         if isinstance(deals, list):
+
             return deals
 
-    return []
-
-    # --------------------------------------------------------
-    # Normalizar resposta
-    # --------------------------------------------------------
+    # Compatibilidade caso a API retorne uma lista diretamente.
 
     if isinstance(data, list):
+
         return data
-
-    if isinstance(data, dict):
-
-        for key in (
-            "deals",
-            "results",
-            "data"
-        ):
-
-            value = data.get(key)
-
-            if isinstance(value, list):
-                return value
 
     return []
 
 
 # ============================================================
-# EXTRAIR INFORMAÇÕES DA OFERTA
+# EXTRAIR DADOS
 # ============================================================
 
 def extract_deal(deal):
@@ -231,17 +260,11 @@ def extract_deal(deal):
         or "Jogo"
     )
 
-    # Algumas respostas colocam os dados diretamente
-    info = deal.get("deal")
-
-    if not isinstance(info, dict):
-        info = deal
-
     # --------------------------------------------------------
     # Loja
     # --------------------------------------------------------
 
-    shop = info.get("shop")
+    shop = deal.get("shop")
 
     if isinstance(shop, dict):
 
@@ -258,21 +281,22 @@ def extract_deal(deal):
     else:
 
         shop_name = (
-            info.get("shopName")
+            deal.get("shopName")
             or "Loja"
         )
 
     # --------------------------------------------------------
-    # Preço atual
+    # Preço
     # --------------------------------------------------------
 
-    price = info.get("price")
+    price = deal.get("price")
 
     if isinstance(price, dict):
 
         current_price = (
             price.get("amount")
-            or price.get("value")
+            if price.get("amount") is not None
+            else price.get("value")
         )
 
     elif isinstance(price, (int, float)):
@@ -281,19 +305,20 @@ def extract_deal(deal):
 
     else:
 
-        current_price = info.get("priceAmount")
+        current_price = None
 
     # --------------------------------------------------------
     # Preço normal
     # --------------------------------------------------------
 
-    regular = info.get("regular")
+    regular = deal.get("regular")
 
     if isinstance(regular, dict):
 
         regular_price = (
             regular.get("amount")
-            or regular.get("value")
+            if regular.get("amount") is not None
+            else regular.get("value")
         )
 
     elif isinstance(regular, (int, float)):
@@ -302,93 +327,118 @@ def extract_deal(deal):
 
     else:
 
-        regular_price = info.get("regularPrice")
+        regular_price = None
 
     # --------------------------------------------------------
     # Desconto
     # --------------------------------------------------------
 
-    discount = (
-        info.get("cut")
-        or info.get("discount")
-        or 0
-    )
+    discount = deal.get("cut", 0)
+
+    try:
+
+        discount = int(discount)
+
+    except Exception:
+
+        discount = 0
 
     # --------------------------------------------------------
     # URL
     # --------------------------------------------------------
 
     url = (
-        info.get("url")
-        or deal.get("url")
-        or deal.get("link")
+        deal.get("url")
+        or "https://isthereanydeal.com/"
     )
 
     # --------------------------------------------------------
     # Plataformas
     # --------------------------------------------------------
 
-    platforms = (
-        info.get("platforms")
-        or deal.get("platforms")
-        or []
-    )
+    platforms = deal.get("platforms") or []
 
     return {
+
         "title": title,
+
         "shop": shop_name,
+
         "current_price": current_price,
+
         "regular_price": regular_price,
+
         "discount": discount,
+
         "url": url,
+
         "platforms": platforms
     }
 
 
 # ============================================================
-# VERIFICAR WINDOWS
+# VERIFICAÇÃO EXTRA DE WINDOWS
 # ============================================================
 
-def is_windows(deal):
+def is_windows_game(deal):
+
+    # O filtro principal já é feito pelo ITAD.
+    # Esta segunda verificação serve como segurança.
 
     platforms = deal.get("platforms", [])
 
-    # Se a API não informar plataforma,
-    # não descartamos a oferta.
     if not platforms:
-        return True
+        return False
 
     for platform in platforms:
 
         if isinstance(platform, dict):
 
-            name = (
+            platform_id = platform.get("id")
+
+            platform_name = (
                 platform.get("name")
-                or platform.get("title")
                 or ""
-            )
+            ).lower()
 
-        else:
+            if platform_id == 1:
+                return True
 
-            name = str(platform)
-
-        name = name.lower()
-
-        if (
-            "windows" in name
-            or "pc" == name
-            or "win" == name
-        ):
-            return True
+            if "windows" in platform_name:
+                return True
 
     return False
+
+
+# ============================================================
+# VERIFICAÇÃO EXTRA DE JOGO
+# ============================================================
+
+def is_game(deal):
+
+    deal_type = (
+        deal.get("type")
+        or "game"
+    )
+
+    if isinstance(deal_type, dict):
+
+        deal_type = (
+            deal_type.get("name")
+            or deal_type.get("type")
+            or ""
+        )
+
+    deal_type = str(deal_type).lower()
+
+    return deal_type == "game"
 
 
 # ============================================================
 # DISCORD
 # ============================================================
 
-def send_discord(deal):
+def send_to_discord(deal):
 
     title = deal["title"]
 
@@ -415,10 +465,8 @@ def send_discord(deal):
 
     description += (
         f"\n📉 **{discount}% OFF**"
+        f"\n🪟 **Windows / PC**"
     )
-
-    if not url:
-        url = "https://isthereanydeal.com/"
 
     embed = {
 
@@ -431,7 +479,7 @@ def send_discord(deal):
         "color": 0x00FF66,
 
         "footer": {
-            "text": "Promoções PC"
+            "text": "Promoções PC • IsThereAnyDeal"
         },
 
         "timestamp": datetime.now(
@@ -465,14 +513,14 @@ def main():
     print()
 
     # --------------------------------------------------------
-    # Encontrar lojas
+    # Lojas
     # --------------------------------------------------------
 
     print("🔎 Procurando lojas...")
+    print()
 
     shops = get_shop_ids()
 
-    print()
     print("Lojas encontradas:")
 
     for name, shop_id in shops.items():
@@ -486,14 +534,27 @@ def main():
     if not shops:
 
         raise RuntimeError(
-            "Nenhuma loja encontrada."
+            "Nenhuma loja configurada foi encontrada."
         )
 
     # --------------------------------------------------------
-    # Buscar promoções
+    # Promoções
     # --------------------------------------------------------
 
-    print("🔎 Buscando promoções...")
+    print(
+        f"🔎 Buscando jogos com "
+        f"{MIN_DISCOUNT}% OFF ou mais..."
+    )
+
+    print(
+        "🪟 Plataforma: Windows"
+    )
+
+    print(
+        "🎮 Tipo: Jogos"
+    )
+
+    print()
 
     deals = get_deals(
         list(shops.values())
@@ -502,6 +563,8 @@ def main():
     print(
         f"📦 {len(deals)} promoções encontradas."
     )
+
+    print()
 
     # --------------------------------------------------------
     # Histórico
@@ -512,7 +575,7 @@ def main():
     published = 0
 
     # --------------------------------------------------------
-    # Processar
+    # Processar ofertas
     # --------------------------------------------------------
 
     for raw_deal in deals:
@@ -525,29 +588,54 @@ def main():
         if not deal:
             continue
 
-        # Somente Windows/PC
-        if not is_windows(deal):
+        # Segurança adicional:
+        # somente jogos.
+
+        if not is_game(raw_deal):
+
+            print(
+                f"⏭️ Ignorando não-jogo: "
+                f"{deal['title']}"
+            )
+
             continue
 
-        title = deal["title"]
+        # Segurança adicional:
+        # somente Windows.
 
-        shop = deal["shop"]
+        if not is_windows_game(deal):
 
-        price = deal["current_price"]
+            print(
+                f"⏭️ Ignorando sem Windows: "
+                f"{deal['title']}"
+            )
 
-        discount = deal["discount"]
+            continue
+
+        # Segurança adicional:
+        # desconto mínimo.
+
+        if deal["discount"] < MIN_DISCOUNT:
+
+            continue
 
         # ----------------------------------------------------
-        # ID único
+        # ID da oferta
         # ----------------------------------------------------
 
         deal_id = (
-            f"{title}|"
-            f"{shop}|"
-            f"{price}"
+            f"{deal['title']}|"
+            f"{deal['shop']}|"
+            f"{deal['current_price']}"
         )
 
         if deal_id in posted:
+
+            print(
+                f"⏭️ Já publicada: "
+                f"{deal['title']}"
+            )
+
             continue
 
         # ----------------------------------------------------
@@ -558,10 +646,12 @@ def main():
 
             print(
                 f"📢 Publicando: "
-                f"{title} - {shop}"
+                f"{deal['title']} - "
+                f"{deal['shop']} - "
+                f"{deal['discount']}% OFF"
             )
 
-            send_discord(deal)
+            send_to_discord(deal)
 
             posted.add(deal_id)
 
@@ -571,7 +661,7 @@ def main():
 
             print(
                 f"❌ Erro ao publicar "
-                f"{title}: {error}"
+                f"{deal['title']}: {error}"
             )
 
     # --------------------------------------------------------

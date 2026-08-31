@@ -187,18 +187,12 @@ def get_deals(shop_ids):
 
     if isinstance(data, dict):
 
-        for key in (
-            "deals",
-            "results",
-            "data"
-        ):
+    deals = data.get("list")
 
-            value = data.get(key)
+    if isinstance(deals, list):
+        return deals
 
-            if isinstance(value, list):
-                return value
-
-    return []
+return []
 
     # --------------------------------------------------------
     # Normalizar resposta

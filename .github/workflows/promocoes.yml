@@ -2,23 +2,24 @@ name: Promocoes PC
 
 on:
   workflow_dispatch:
+
   schedule:
-    - cron: "0 12 * * *"
+    - cron: '0 12 * * *'
 
 jobs:
   promocoes:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar codigo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configurar Python
+      - name: Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
-      - name: Instalar dependencias
+      - name: Dependencias
         run: pip install -r requirements.txt
 
       - name: Executar bot

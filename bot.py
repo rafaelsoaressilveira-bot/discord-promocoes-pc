@@ -186,13 +186,12 @@ def get_deals(shop_ids):
         return data
 
     if isinstance(data, dict):
+        deals = data.get("list")
 
-    deals = data.get("list")
+        if isinstance(deals, list):
+            return deals
 
-    if isinstance(deals, list):
-        return deals
-
-return []
+    return []
 
     # --------------------------------------------------------
     # Normalizar resposta

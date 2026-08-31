@@ -303,11 +303,21 @@ def extract_deal(deal):
     if not url:
         url = "https://isthereanydeal.com/"
 
-    # Imagem do jogo
-    image_url = (
-        deal.get("assets", {}).get("boxart")
-        or deal.get("assets", {}).get("banner")
-    )
+# ========================================================
+# IMAGEM DO JOGO
+# ========================================================
+
+assets = deal.get("assets", {})
+
+if not isinstance(assets, dict):
+    assets = {}
+
+image_url = (
+    assets.get("boxart")
+    or assets.get("banner")
+    or assets.get("icon")
+    or assets.get("logo")
+)    
     
     # Plataformas
     platforms = deal_info.get("platforms", [])

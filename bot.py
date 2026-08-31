@@ -297,28 +297,28 @@ def extract_deal(deal):
     except Exception:
         discount = 0
 
-    # URL
+        # URL
     url = deal_info.get("url")
 
     if not url:
         url = "https://isthereanydeal.com/"
 
-# ========================================================
-# IMAGEM DO JOGO
-# ========================================================
+    # ========================================================
+    # IMAGEM DO JOGO
+    # ========================================================
 
-assets = deal.get("assets", {})
+    assets = deal.get("assets", {})
 
-if not isinstance(assets, dict):
-    assets = {}
+    if not isinstance(assets, dict):
+        assets = {}
 
-image_url = (
-    assets.get("boxart")
-    or assets.get("banner")
-    or assets.get("icon")
-    or assets.get("logo")
-)    
-    
+    image_url = (
+        assets.get("boxart")
+        or assets.get("banner")
+        or assets.get("icon")
+        or assets.get("logo")
+    )
+
     # Plataformas
     platforms = deal_info.get("platforms", [])
 
@@ -336,49 +336,6 @@ image_url = (
         "platforms": platforms,
         "type": game_type
     }
-
-def is_windows_game(deal):
-
-    platforms = deal.get("platforms", [])
-
-    if not isinstance(platforms, list):
-        return False
-
-    for platform in platforms:
-
-        if not isinstance(platform, dict):
-            continue
-
-        platform_id = platform.get("id")
-
-        platform_name = str(
-            platform.get("name") or ""
-        ).lower()
-
-        if platform_id == 1:
-            return True
-
-        if platform_name == "windows":
-            return True
-
-    return False
-
-
-def is_game(deal):
-
-    game_type = deal.get("type")
-
-    if isinstance(game_type, dict):
-
-        game_type = (
-            game_type.get("name")
-            or game_type.get("type")
-        )
-
-    if game_type is None:
-        return False
-
-    return str(game_type).lower() == "game"
 
     # --------------------------------------------------------
     # Loja

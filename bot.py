@@ -2,89 +2,97 @@
 import os
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ============================================================
 # CONFIGURAÇÃO
 # ============================================================
 
-DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
-ITAD_API_KEY = os.environ.get("ITAD_API_KEY")
+ITAD_API_KEY = os.environ["ITAD_API_KEY"]
+DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 
-# Canal do Discord que você passou.
-DISCORD_CHANNEL_ID = "1544039979041431662"
-
-# Brasil
 COUNTRY = "BR"
 
-# Mínimo de desconto
+# Desconto mínimo
 MIN_DISCOUNT = 50
 
-# Quantidade máxima de promoções publicadas por execução
+# Máximo de promoções por execução
 MAX_DEALS = 10
 
-# Lojas que vamos monitorar
-# IDs oficiais do IsThereAnyDeal
-SHOPS = {
-    61: "Steam",
-    # Os IDs das demais lojas serão preenchidos automaticamente
-    # através da lista de lojas do ITAD.
-}
-
-SHOP_NAMES = {
-    "Steam",
-    "Nuuvem",
-    "Epic Game Store",
-    "GOG",
-    "GreenManGaming",
-    "Fanatical",
-    "Humble Store",
-    "GameBillet",
-    "GamesPlanet US",
-    "GamesPlanet UK",
-    "GamesPlanet DE",
-    "GamesPlanet FR",
-}
-
-# Arquivo usado para evitar publicar a mesma oferta repetidamente
+# Arquivo para evitar repetir ofertas
 POSTED_FILE = "posted_deals.json"
 
 
 # ============================================================
-# UTILIDADES
+# LOJAS
+# ============================================================
+#
+# O ITAD fornece os IDs através do endpoint /service/shops/v1.
+# Nós descobrimos os IDs automaticamente pelo nome.
+#
+
+TARGET_SHOPS = {
+    "Steam",
+    "Nuuvem",
+    "Epic Games Store",
+    "GOG",
+    "Green Man Gaming",
+    "Fanatical",
+    "Humble Store",
+    "Gamesplanet",
+    "GameBillet",
+}
+
+
+# ============================================================
+# FUNÇÕES AUXILIARES
 # ============================================================
 
-def load_posted_deals():
+def load_posted():
+    """Carrega as ofertas que já foram publicadas."""
+
     if not os.path.exists(POSTED_FILE):
         return set()
 
     try:
-        with open(POSTED_FILE, "r", encoding="utf-8") as file:
-            return set(json.load(file))
+        with open(POSTED_FILE, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+
     except Exception:
         return set()
 
 
-def save_posted_deals(posted):
-    # Mantém somente as últimas 500 ofertas
-    posted_list = list(posted)[-500:]
+def save_posted(posted):
+    """Salva as últimas ofertas publicadas."""
 
-    with open(POSTED_FILE, "w", encoding="utf-8") as file:
-        json.dump(posted_list, file, ensure_ascii=False, indent=2)
+    # Mantém somente as últimas 500
+    data = list(posted)[-500:]
+
+    with open(POSTED_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def format_brl(value):
-    if value is None:
-        return "Preço indisponível"
+def format_price(price):
+    """Converte preço para formato brasileiro."""
 
-    return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    if price is None:
+        return "Grátis"
+
+    return (
+        f"R$ {price:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+    )
 
 
 # ============================================================
-# DESCOBRIR IDS DAS LOJAS
+# BUSCAR LOJAS
 # ============================================================
 
-def get_shop_ids():
+def get_shops():
+    """Obtém as lojas disponíveis no ITAD."""
+
     url = "https://api.isthereanydeal.com/service/shops/v1"
 
     headers = {
@@ -99,17 +107,30 @@ def get_shop_ids():
 
     response.raise_for_status()
 
-    shops = response.json()
+    return response.json()
 
-    result = []
+
+def find_target_shop_ids():
+    """Encontra os IDs das lojas que queremos."""
+
+    shops = get_shops()
+
+    found = {}
 
     for shop in shops:
-        name = shop.get("name")
 
-        if name in SHOP_NAMES:
-            result.append(shop["id"])
+        # A API atual usa 'title'
+        name = shop.get("title", "")
 
-    return result
+        # Comparação sem diferença entre maiúsculas/minúsculas
+        name_lower = name.lower()
+
+        for target in TARGET_SHOPS:
+
+            if name_lower == target.lower():
+                found[target] = shop["id"]
+
+    return found
 
 
 # ============================================================
@@ -117,6 +138,8 @@ def get_shop_ids():
 # ============================================================
 
 def get_deals(shop_ids):
+    """Busca promoções no Brasil."""
+
     url = "https://api.isthereanydeal.com/deals/v2"
 
     headers = {
@@ -126,12 +149,20 @@ def get_deals(shop_ids):
 
     payload = {
         "country": COUNTRY,
+
         "offset": 0,
+
         "limit": 200,
+
+        # Maior desconto primeiro
         "sort": "-cut",
+
         "nondeals": False,
+
         "mature": False,
+
         "shops": shop_ids,
+
         "filter": {
             "cut": {
                 "min": MIN_DISCOUNT
@@ -152,66 +183,102 @@ def get_deals(shop_ids):
 
 
 # ============================================================
-# PUBLICAR NO DISCORD
+# VERIFICAR SE É PC / WINDOWS
 # ============================================================
 
-def send_to_discord(deal):
-    if not DISCORD_WEBHOOK_URL:
-        raise RuntimeError("DISCORD_WEBHOOK_URL não configurado.")
+def is_windows_deal(deal):
+    """
+    O ITAD informa as plataformas da oferta.
+    Queremos somente jogos que tenham Windows.
+    """
 
-    title = deal.get("title", "Jogo")
+    deal_info = deal.get("deal", {})
 
-    # A API pode retornar diferentes estruturas dependendo da versão.
-    # Por isso usamos get() de forma defensiva.
+    platforms = deal_info.get("platforms", [])
 
-    game = deal.get("game", {})
-    deal_data = deal.get("deal", {})
-    shop = deal_data.get("shop", {})
+    if not platforms:
+        # Se a API não informar plataforma,
+        # aceitamos para não perder ofertas.
+        return True
+
+    for platform in platforms:
+
+        name = platform.get("name", "").lower()
+
+        if name == "windows":
+            return True
+
+    return False
+
+
+# ============================================================
+# ENVIAR PARA DISCORD
+# ============================================================
+
+def send_discord(deal):
+
+    game_title = deal.get("title", "Jogo")
+
+    deal_info = deal.get("deal", {})
+
+    shop = deal_info.get("shop", {})
 
     shop_name = shop.get("name", "Loja")
 
-    price = deal_data.get("price", {})
-    regular = deal_data.get("regular", {})
+    price = deal_info.get("price", {})
+
+    regular = deal_info.get("regular", {})
 
     current_price = price.get("amount")
+
     regular_price = regular.get("amount")
 
-    cut = deal_data.get("cut", 0)
+    discount = deal_info.get("cut", 0)
 
-    url = deal_data.get("url")
+    url = deal_info.get("url")
 
-    if not url:
-        url = deal.get("url")
+    # --------------------------------------------------------
+    # Preços
+    # --------------------------------------------------------
 
-    if current_price is not None:
-        current_price_text = format_brl(current_price)
-    else:
-        current_price_text = "Grátis"
+    current_text = format_price(current_price)
 
-    if regular_price is not None:
-        regular_price_text = format_brl(regular_price)
-    else:
-        regular_price_text = ""
+    regular_text = format_price(regular_price)
+
+    # --------------------------------------------------------
+    # Descrição
+    # --------------------------------------------------------
 
     description = (
         f"🏪 **{shop_name}**\n"
-        f"💰 **{current_price_text}**"
+        f"💰 **{current_text}**"
     )
 
-    if regular_price:
-        description += f" ~~{regular_price_text}~~"
+    if regular_price is not None:
+        description += f" ~~{regular_text}~~"
 
-    description += f"\n📉 **{cut}% OFF**"
+    description += f"\n📉 **{discount}% OFF**"
+
+    # --------------------------------------------------------
+    # Embed
+    # --------------------------------------------------------
 
     embed = {
-        "title": f"🔥 {title}",
+        "title": f"🔥 {game_title}",
+
         "description": description,
+
         "url": url,
+
         "color": 0x00FF66,
+
         "footer": {
             "text": "Promoções PC • IsThereAnyDeal"
         },
-        "timestamp": datetime.utcnow().isoformat()
+
+        "timestamp": datetime.now(
+            timezone.utc
+        ).isoformat()
     }
 
     payload = {
@@ -220,7 +287,9 @@ def send_to_discord(deal):
 
     response = requests.post(
         DISCORD_WEBHOOK_URL,
+
         json=payload,
+
         timeout=30
     )
 
@@ -228,90 +297,157 @@ def send_to_discord(deal):
 
 
 # ============================================================
-# PRINCIPAL
+# PROGRAMA PRINCIPAL
 # ============================================================
 
 def main():
-    print("======================================")
-    print(" BOT DE PROMOÇÕES PC")
-    print("======================================")
 
-    if not ITAD_API_KEY:
+    print()
+    print("==========================================")
+    print("       BOT DE PROMOÇÕES DE PC")
+    print("==========================================")
+    print()
+
+    # --------------------------------------------------------
+    # Encontrar lojas
+    # --------------------------------------------------------
+
+    print("🔎 Procurando lojas...")
+
+    shops = find_target_shop_ids()
+
+    print()
+    print("Lojas encontradas:")
+
+    for name, shop_id in shops.items():
+        print(f"  ✅ {name} ({shop_id})")
+
+    print()
+
+    if not shops:
+
         raise RuntimeError(
-            "ITAD_API_KEY não configurado."
+            "Nenhuma loja foi encontrada."
         )
 
-    if not DISCORD_WEBHOOK_URL:
-        raise RuntimeError(
-            "DISCORD_WEBHOOK_URL não configurado."
-        )
+    # --------------------------------------------------------
+    # Buscar promoções
+    # --------------------------------------------------------
 
-    print("Obtendo lojas...")
+    print("🔎 Buscando promoções...")
 
-    shop_ids = get_shop_ids()
+    deals = get_deals(
+        list(shops.values())
+    )
 
-    print(f"Lojas encontradas: {shop_ids}")
+    print(
+        f"📦 {len(deals)} promoções encontradas."
+    )
 
-    if not shop_ids:
-        raise RuntimeError(
-            "Nenhuma das lojas configuradas foi encontrada."
-        )
+    # --------------------------------------------------------
+    # Carregar histórico
+    # --------------------------------------------------------
 
-    print("Buscando promoções...")
-
-    deals = get_deals(shop_ids)
-
-    print(f"Promoções encontradas: {len(deals)}")
-
-    posted = load_posted_deals()
+    posted = load_posted()
 
     published = 0
+
+    # --------------------------------------------------------
+    # Processar promoções
+    # --------------------------------------------------------
 
     for deal in deals:
 
         if published >= MAX_DEALS:
             break
 
-        game = deal.get("game", {})
-        deal_data = deal.get("deal", {})
-        shop = deal_data.get("shop", {})
+        # Somente Windows / PC
+        if not is_windows_deal(deal):
+            continue
 
-        title = deal.get("title") or game.get("title", "Jogo")
-        shop_name = shop.get("name", "Loja")
+        title = deal.get(
+            "title",
+            "Jogo"
+        )
 
-        current_price = deal_data.get("price", {}).get("amount")
+        deal_info = deal.get(
+            "deal",
+            {}
+        )
 
-        # Identificador único da oferta
+        shop = deal_info.get(
+            "shop",
+            {}
+        )
+
+        shop_name = shop.get(
+            "name",
+            "Loja"
+        )
+
+        price = deal_info.get(
+            "price",
+            {}
+        ).get(
+            "amount"
+        )
+
+        # ----------------------------------------------------
+        # ID único da oferta
+        # ----------------------------------------------------
+
         deal_id = (
             f"{title}|"
             f"{shop_name}|"
-            f"{current_price}"
+            f"{price}"
         )
 
+        # Já publicamos?
         if deal_id in posted:
             continue
 
-        try:
-            print(f"Publicando: {title} - {shop_name}")
+        # ----------------------------------------------------
+        # Publicar
+        # ----------------------------------------------------
 
-            send_to_discord(deal)
+        try:
+
+            print(
+                f"📢 Publicando: "
+                f"{title} - {shop_name}"
+            )
+
+            send_discord(deal)
 
             posted.add(deal_id)
 
             published += 1
 
         except Exception as error:
+
             print(
-                f"Erro ao publicar {title}: {error}"
+                f"❌ Erro ao publicar "
+                f"{title}: {error}"
             )
 
-    save_posted_deals(posted)
+    # --------------------------------------------------------
+    # Salvar histórico
+    # --------------------------------------------------------
 
-    print("--------------------------------------")
-    print(f"Publicadas: {published}")
-    print("Bot finalizado.")
-    print("--------------------------------------")
+    save_posted(posted)
 
+    print()
+    print("------------------------------------------")
+    print(
+        f"✅ Promoções publicadas: {published}"
+    )
+    print("------------------------------------------")
+    print()
+
+
+# ============================================================
+# INICIAR
+# ============================================================
 
 if __name__ == "__main__":
     main()

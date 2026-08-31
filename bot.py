@@ -254,11 +254,114 @@ def extract_deal(deal):
     if not isinstance(deal, dict):
         return None
 
-    title = (
-        deal.get("title")
-        or deal.get("name")
-        or "Jogo"
-    )
+    title = deal.get("title") or "Jogo"
+
+    deal_info = deal.get("deal")
+
+    if not isinstance(deal_info, dict):
+        return None
+
+    # Loja
+    shop = deal_info.get("shop", {})
+
+    if isinstance(shop, dict):
+        shop_name = (
+            shop.get("name")
+            or shop.get("title")
+            or "Loja"
+        )
+    else:
+        shop_name = str(shop)
+
+    # Preço atual
+    price = deal_info.get("price", {})
+
+    if isinstance(price, dict):
+        current_price = price.get("amount")
+    else:
+        current_price = None
+
+    # Preço normal
+    regular = deal_info.get("regular", {})
+
+    if isinstance(regular, dict):
+        regular_price = regular.get("amount")
+    else:
+        regular_price = None
+
+    # Desconto
+    discount = deal_info.get("cut", 0)
+
+    try:
+        discount = int(discount)
+    except Exception:
+        discount = 0
+
+    # URL
+    url = deal_info.get("url")
+
+    if not url:
+        url = "https://isthereanydeal.com/"
+
+    # Plataformas
+    platforms = deal_info.get("platforms", [])
+
+    # Tipo do produto
+    game_type = deal.get("type")
+
+    return {
+        "title": title,
+        "shop": shop_name,
+        "current_price": current_price,
+        "regular_price": regular_price,
+        "discount": discount,
+        "url": url,
+        "platforms": platforms,
+        "type": game_type
+    }
+
+def is_windows_game(deal):
+
+    platforms = deal.get("platforms", [])
+
+    if not isinstance(platforms, list):
+        return False
+
+    for platform in platforms:
+
+        if not isinstance(platform, dict):
+            continue
+
+        platform_id = platform.get("id")
+
+        platform_name = str(
+            platform.get("name") or ""
+        ).lower()
+
+        if platform_id == 1:
+            return True
+
+        if platform_name == "windows":
+            return True
+
+    return False
+
+
+def is_game(deal):
+
+    game_type = deal.get("type")
+
+    if isinstance(game_type, dict):
+
+        game_type = (
+            game_type.get("name")
+            or game_type.get("type")
+        )
+
+    if game_type is None:
+        return False
+
+    return str(game_type).lower() == "game"
 
     # --------------------------------------------------------
     # Loja

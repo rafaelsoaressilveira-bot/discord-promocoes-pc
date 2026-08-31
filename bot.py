@@ -500,21 +500,14 @@ def is_game(deal):
 def send_to_discord(deal):
 
     title = deal["title"]
-
     shop = deal["shop"]
-
     current_price = deal["current_price"]
-
     regular_price = deal["regular_price"]
-
     discount = deal["discount"]
-
     url = deal["url"]
-
     description = (
-        f"🏪 **{shop}**\n"
         f"💰 **{format_price(current_price)}**"
-    )
+        )
 
     if regular_price is not None:
 
@@ -524,8 +517,7 @@ def send_to_discord(deal):
 
     description += (
         f"\n📉 **{discount}% OFF**"
-        f"\n🪟 **Windows / PC**"
-    )
+        )
 
     embed = {
     "title": f"🔥 {title}",
@@ -619,6 +611,36 @@ def main():
         list(shops.values())
     )
 
+    print()
+    print("🔍 OFERTAS RECEBIDAS:")
+
+    for raw_deal in deals:
+
+    if not isinstance(raw_deal, dict):
+        continue
+
+    title = raw_deal.get("title", "Sem título")
+
+    deal_info = raw_deal.get("deal", {})
+
+    if not isinstance(deal_info, dict):
+        continue
+
+    shop = deal_info.get("shop", {})
+
+    if isinstance(shop, dict):
+        shop_name = shop.get("name", "Sem loja")
+    else:
+        shop_name = str(shop)
+
+    cut = deal_info.get("cut", 0)
+
+    print(
+        f"  • {shop_name} | {title} | {cut}% OFF"
+    )
+
+print()
+    
     print(
         f"📦 {len(deals)} promoções encontradas."
     )

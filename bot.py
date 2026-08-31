@@ -169,8 +169,6 @@ def get_deals(shop_ids):
         "nondeals": False,
         "mature": False,
         "shops": shop_ids
-            }
-        }
     }
 
     response = requests.post(
@@ -183,6 +181,24 @@ def get_deals(shop_ids):
     response.raise_for_status()
 
     data = response.json()
+
+    if isinstance(data, list):
+        return data
+
+    if isinstance(data, dict):
+
+        for key in (
+            "deals",
+            "results",
+            "data"
+        ):
+
+            value = data.get(key)
+
+            if isinstance(value, list):
+                return value
+
+    return []
 
     # --------------------------------------------------------
     # Normalizar resposta

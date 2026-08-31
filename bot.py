@@ -168,10 +168,7 @@ def get_deals(shop_ids):
         "sort": "-cut",
         "nondeals": False,
         "mature": False,
-        "shops": shop_ids,
-        "filter": {
-            "cut": {
-                "min": MIN_DISCOUNT
+        "shops": shop_ids
             }
         }
     }

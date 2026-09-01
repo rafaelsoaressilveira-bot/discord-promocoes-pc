@@ -28,13 +28,10 @@ POSTED_FILE = "posted_deals.json"
 # ============================================================
 
 TARGET_SHOPS = {
-    "steam",
-    "nuuvem",
-    "gog",
-    "epic games store",
-    "epic games",
+    35,  # GOG
+    50,  # Nuuvem
+    61,  # Steam
 }
-
 
 # ============================================================
 # HISTÓRICO

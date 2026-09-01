@@ -417,7 +417,7 @@ def get_deals_for_shop(shop_id):
         "limit": DEALS_PER_SHOP,
 
         # Maior desconto primeiro
-        "sort": "-cut",
+        "sort": "price",
 
         "nondeals": False,
 

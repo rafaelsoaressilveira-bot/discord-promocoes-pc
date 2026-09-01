@@ -46,28 +46,21 @@ POSTED_FILE = "posted_deals.json"
 # ============================================================
 
 def load_posted():
+    if not os.path.exists(POSTED_FILE):
+        return set()
 
+    try:
+        with open(
+            POSTED_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+            return set(json.load(file))
 
-if not os.path.exists(POSTED_FILE):
-    return set()
-
-try:
-
-    with open(
-        POSTED_FILE,
-        "r",
-        encoding="utf-8"
-    ) as file:
-
-        return set(json.load(file))
-
-except Exception:
-
-    return set()
-
+    except Exception:
+        return set()
 
 def save_posted(posted):
-
 
 posted_list = list(posted)[-1000:]
 

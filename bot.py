@@ -111,9 +111,7 @@ def get_shop_ids():
         shop_id = shop.get("id")
         name = shop.get("name", "")
 
-        normalized = name.lower().strip()
-
-        if normalized in TARGET_SHOPS:
+        if shop_id in TARGET_SHOPS:
 
             result.append(shop_id)
 

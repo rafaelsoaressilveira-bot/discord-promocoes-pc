@@ -15,10 +15,10 @@ ITAD_API_KEY = os.environ.get("ITAD_API_KEY")
 COUNTRY = "BR"
 
 # Desconto mínimo
-MIN_DISCOUNT = 30
+MIN_DISCOUNT = 50
 
 # Preço máximo da promoção
-MAX_PRICE = 100.00
+MAX_PRICE = 600.00
 
 # Máximo de promoções publicadas no total
 MAX_DEALS = 200

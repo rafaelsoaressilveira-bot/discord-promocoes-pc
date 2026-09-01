@@ -611,35 +611,35 @@ def main():
         list(shops.values())
     )
 
-    print()
+        print()
     print("🔍 OFERTAS RECEBIDAS:")
 
     for raw_deal in deals:
 
-    if not isinstance(raw_deal, dict):
-        continue
+        if not isinstance(raw_deal, dict):
+            continue
 
-    title = raw_deal.get("title", "Sem título")
+        title = raw_deal.get("title", "Sem título")
 
-    deal_info = raw_deal.get("deal", {})
+        deal_info = raw_deal.get("deal", {})
 
-    if not isinstance(deal_info, dict):
-        continue
+        if not isinstance(deal_info, dict):
+            continue
 
-    shop = deal_info.get("shop", {})
+        shop = deal_info.get("shop", {})
 
-    if isinstance(shop, dict):
-        shop_name = shop.get("name", "Sem loja")
-    else:
-        shop_name = str(shop)
+        if isinstance(shop, dict):
+            shop_name = shop.get("name", "Sem loja")
+        else:
+            shop_name = str(shop)
 
-    cut = deal_info.get("cut", 0)
+        cut = deal_info.get("cut", 0)
 
-    print(
-        f"  • {shop_name} | {title} | {cut}% OFF"
-    )
+        print(
+            f"  • {shop_name} | {title} | {cut}% OFF"
+        )
 
-print()
+    print()
     
     print(
         f"📦 {len(deals)} promoções encontradas."

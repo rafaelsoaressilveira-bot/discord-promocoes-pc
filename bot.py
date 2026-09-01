@@ -4,7 +4,6 @@ import re
 import requests
 from datetime import datetime, timezone
 
-
 # ============================================================
 # CONFIGURAÇÃO
 # ============================================================
@@ -14,57 +13,33 @@ ITAD_API_KEY = os.environ.get("ITAD_API_KEY")
 
 COUNTRY = "BR"
 
-# Desconto mínimo
-MIN_DISCOUNT = 50
+# Só entram promoções com pelo menos este desconto
 
-# Preço máximo da promoção
-MAX_PRICE = 600.00
+MIN_DISCOUNT = 30
 
-# Máximo de promoções publicadas no total
+# Só entram promoções até este preço
+
+MAX_PRICE = 100.00
+
+# Quantos jogos populares vamos analisar
+
+POPULAR_GAMES = 100
+
+# Máximo de jogos publicados
+
 MAX_DEALS = 200
 
-# Quantidade máxima buscada por loja
-DEALS_PER_SHOP = 200
-
-# Histórico
-POSTED_FILE = "posted_deals.json"
-
-
-# ============================================================
-# LOJAS
-# ============================================================
+# Lojas
 
 SHOPS = {
-    61: "Steam",
-    50: "Nuuvem",
-    35: "GOG",
+61: "Steam",
+50: "Nuuvem",
+35: "GOG",
 }
 
+# Histórico
 
-# ============================================================
-# TERMOS QUE NÃO QUEREMOS
-# ============================================================
-
-BLOCKED_KEYWORDS = [
-    "dlc",
-    "add-on",
-    "addon",
-    "soundtrack",
-    "season pass",
-    "expansion pass",
-    "expansion",
-    "geforce now",
-    "subscription",
-    "membership",
-    "wallet",
-    "currency",
-    "points",
-    "credits",
-    "upgrade",
-    "demo version",
-    "ost",
-]
-
+POSTED_FILE = "posted_deals.json"
 
 # ============================================================
 # HISTÓRICO
@@ -72,40 +47,42 @@ BLOCKED_KEYWORDS = [
 
 def load_posted():
 
-    if not os.path.exists(POSTED_FILE):
-        return set()
 
-    try:
+if not os.path.exists(POSTED_FILE):
+    return set()
 
-        with open(
-            POSTED_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
+try:
 
-            return set(json.load(file))
+    with open(
+        POSTED_FILE,
+        "r",
+        encoding="utf-8"
+    ) as file:
 
-    except Exception:
+        return set(json.load(file))
 
-        return set()
+except Exception:
+
+    return set()
 
 
 def save_posted(posted):
 
-    posted_list = list(posted)[-1000:]
 
-    with open(
-        POSTED_FILE,
-        "w",
-        encoding="utf-8"
-    ) as file:
+posted_list = list(posted)[-1000:]
 
-        json.dump(
-            posted_list,
-            file,
-            ensure_ascii=False,
-            indent=2
-        )
+with open(
+    POSTED_FILE,
+    "w",
+    encoding="utf-8"
+) as file:
+
+    json.dump(
+        posted_list,
+        file,
+        ensure_ascii=False,
+        indent=2
+    )
 
 
 # ============================================================
@@ -114,660 +91,570 @@ def save_posted(posted):
 
 def format_brl(value):
 
-    if value is None:
-        return "Preço indisponível"
 
-    return (
-        f"R$ {float(value):,.2f}"
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-    )
+if value is None:
+    return "Preço indisponível"
 
+return (
+    f"R$ {float(value):,.2f}"
+    .replace(",", "X")
+    .replace(".", ",")
+    .replace("X", ".")
+)
 
-# ============================================================
-# NORMALIZAR TÍTULO
-# ============================================================
 
 def normalize_title(title):
 
-    if not title:
-        return ""
 
-    title = str(title).lower().strip()
+if not title:
+    return ""
 
-    title = re.sub(
-        r"[^\w\s]",
-        " ",
-        title,
-        flags=re.UNICODE
-    )
+title = str(title).lower().strip()
 
-    title = re.sub(
-        r"\s+",
-        " ",
-        title
-    )
+title = re.sub(
+    r"[^\w\s]",
+    " ",
+    title,
+    flags=re.UNICODE
+)
 
-    return title.strip()
+title = re.sub(
+    r"\s+",
+    " ",
+    title
+)
+
+return title.strip()
 
 
 # ============================================================
-# EXTRAIR DADOS DE UMA OFERTA
+# BUSCAR JOGOS POPULARES
 # ============================================================
 
-def extract_deal(deal):
+def get_popular_games():
 
-    if not isinstance(deal, dict):
-        return None
 
-    game = deal.get("game", {})
+url = (
+    "https://api.isthereanydeal.com/"
+    "stats/most-popular/v1"
+)
 
-    if not isinstance(game, dict):
-        game = {}
+headers = {
+    "ITAD-API-Key": ITAD_API_KEY
+}
 
-    title = (
-        deal.get("title")
-        or game.get("title")
-        or "Jogo"
+params = {
+    "offset": 0,
+    "limit": POPULAR_GAMES
+}
+
+response = requests.get(
+    url,
+    headers=headers,
+    params=params,
+    timeout=30
+)
+
+response.raise_for_status()
+
+data = response.json()
+
+if not isinstance(data, list):
+    return []
+
+# Mantém somente jogos
+games = []
+
+for item in data:
+
+    if not isinstance(item, dict):
+        continue
+
+    if item.get("type") != "game":
+        continue
+
+    game_id = item.get("id")
+
+    title = item.get(
+        "title",
+        "Jogo"
     )
 
-    deal_info = deal.get("deal", {})
+    if not game_id:
+        continue
 
-    if not isinstance(deal_info, dict):
-        return None
-
-    # ----------------------------
-    # Loja
-    # ----------------------------
-
-    shop = deal_info.get("shop", {})
-
-    if isinstance(shop, dict):
-
-        shop_name = (
-            shop.get("name")
-            or shop.get("title")
-            or "Loja"
+    games.append({
+        "id": game_id,
+        "title": title,
+        "position": item.get(
+            "position",
+            999999
         )
+    })
 
-        shop_id = shop.get("id")
+return games
 
-    else:
 
-        shop_name = str(shop)
-        shop_id = None
+# ============================================================
+# BUSCAR PREÇOS DOS JOGOS POPULARES
+# ============================================================
 
-    # ----------------------------
-    # Preço atual
-    # ----------------------------
+def get_prices(game_ids):
 
-    price = deal_info.get("price", {})
 
-    if isinstance(price, dict):
+url = (
+    "https://api.isthereanydeal.com/"
+    "games/prices/v3"
+)
 
-        current_price = price.get("amount")
+headers = {
+    "ITAD-API-Key": ITAD_API_KEY,
+    "Content-Type": "application/json"
+}
 
-    else:
+params = {
+    "country": COUNTRY,
+    "shops": ",".join(
+        str(shop_id)
+        for shop_id in SHOPS.keys()
+    ),
+    "deals": "true",
+    "capacity": 0
+}
 
-        current_price = None
+# A API aceita no máximo 200 IDs por chamada.
+game_ids = game_ids[:200]
 
-    # ----------------------------
-    # Preço normal
-    # ----------------------------
+response = requests.post(
+    url,
+    headers=headers,
+    params=params,
+    json=game_ids,
+    timeout=60
+)
 
-    regular = deal_info.get("regular", {})
+response.raise_for_status()
 
-    if isinstance(regular, dict):
+data = response.json()
 
-        regular_price = regular.get("amount")
+if not isinstance(data, list):
+    return []
 
-    else:
+return data
 
-        regular_price = None
 
-    # ----------------------------
-    # Desconto
-    # ----------------------------
+# ============================================================
+# CONVERTER PREÇO PARA NOSSO FORMATO
+# ============================================================
 
-    discount = deal_info.get(
+def parse_price_game(game_price):
+
+
+if not isinstance(game_price, dict):
+    return []
+
+game_id = game_price.get("id")
+
+deals = game_price.get(
+    "deals",
+    []
+)
+
+if not isinstance(deals, list):
+    return []
+
+results = []
+
+for deal in deals:
+
+    if not isinstance(
+        deal,
+        dict
+    ):
+        continue
+
+    shop = deal.get(
+        "shop",
+        {}
+    )
+
+    if not isinstance(
+        shop,
+        dict
+    ):
+        continue
+
+    shop_id = shop.get(
+        "id"
+    )
+
+    if shop_id not in SHOPS:
+        continue
+
+    platforms = deal.get(
+        "platforms",
+        []
+    )
+
+    # ----------------------------------------------------
+    # Somente Windows
+    # ----------------------------------------------------
+
+    has_windows = False
+
+    if isinstance(
+        platforms,
+        list
+    ):
+
+        for platform in platforms:
+
+            if not isinstance(
+                platform,
+                dict
+            ):
+                continue
+
+            platform_id = platform.get(
+                "id"
+            )
+
+            platform_name = (
+                str(
+                    platform.get(
+                        "name",
+                        ""
+                    )
+                )
+                .lower()
+            )
+
+            if (
+                platform_id == 1
+                or platform_name == "windows"
+            ):
+                has_windows = True
+                break
+
+    if not has_windows:
+        continue
+
+    # ----------------------------------------------------
+    # Preços
+    # ----------------------------------------------------
+
+    price = deal.get(
+        "price",
+        {}
+    )
+
+    regular = deal.get(
+        "regular",
+        {}
+    )
+
+    if not isinstance(
+        price,
+        dict
+    ):
+        continue
+
+    current_price = price.get(
+        "amount"
+    )
+
+    if current_price is None:
+        continue
+
+    if not isinstance(
+        regular,
+        dict
+    ):
+        regular = {}
+
+    regular_price = regular.get(
+        "amount"
+    )
+
+    discount = deal.get(
         "cut",
         0
     )
 
     try:
-
-        discount = float(discount)
-
-    except (TypeError, ValueError):
-
+        discount = float(
+            discount
+        )
+    except (
+        TypeError,
+        ValueError
+    ):
         discount = 0
 
-    # ----------------------------
-    # URL
-    # ----------------------------
+    # ----------------------------------------------------
+    # Filtros
+    # ----------------------------------------------------
 
-    url = deal_info.get("url")
+    if discount < MIN_DISCOUNT:
+        continue
 
-    if not url:
+    if float(current_price) > MAX_PRICE:
+        continue
 
-        url = deal.get("url")
-
-    # ----------------------------
-    # Plataformas
-    # ----------------------------
-
-    platforms = deal_info.get(
-        "platforms",
-        []
+    url = deal.get(
+        "url"
     )
 
-    # ----------------------------
-    # Tipo
-    # ----------------------------
-
-    deal_type = deal.get("type")
-
-    return {
-        "title": title,
-        "shop": shop_name,
+    results.append({
+        "game_id": game_id,
         "shop_id": shop_id,
-        "current_price": current_price,
-        "regular_price": regular_price,
+        "shop": SHOPS[shop_id],
+        "price": float(current_price),
+        "regular": (
+            float(regular_price)
+            if regular_price is not None
+            else None
+        ),
         "discount": discount,
-        "url": url,
-        "platforms": platforms,
-        "type": deal_type,
-        "raw": deal,
-    }
+        "url": url
+    })
+
+return results
 
 
 # ============================================================
-# VERIFICAR WINDOWS
+# AGRUPAR POR JOGO
 # ============================================================
 
-def is_windows_game(deal):
-
-    info = extract_deal(deal)
-
-    if not info:
-        return False
-
-    platforms = info["platforms"]
-
-    if not platforms:
-        return False
-
-    if isinstance(platforms, dict):
-
-        platforms = [platforms]
-
-    if isinstance(platforms, str):
-
-        platforms = [platforms]
-
-    for platform in platforms:
-
-        if isinstance(platform, dict):
-
-            platform_id = platform.get("id")
-
-            platform_name = (
-                platform.get("name")
-                or ""
-            ).lower()
-
-            if platform_id == 1:
-                return True
-
-            if platform_name == "windows":
-                return True
-
-        else:
-
-            platform_text = (
-                str(platform)
-                .lower()
-                .strip()
-            )
-
-            if "windows" in platform_text:
-                return True
-
-            if platform_text == "pc":
-                return True
-
-    return False
+def build_deal_list(
+popular_games,
+price_data
+):
 
 
-# ============================================================
-# VERIFICAR SE É JOGO
-# ============================================================
+titles = {
+    game["id"]: game["title"]
+    for game in popular_games
+}
 
-def is_game(deal):
+popularity_position = {
+    game["id"]: game["position"]
+    for game in popular_games
+}
 
-    info = extract_deal(deal)
+result = []
 
-    if not info:
-        return False
+for game_price in price_data:
 
-    title_lower = info["title"].lower()
-
-    # Bloqueia pelo título
-    for keyword in BLOCKED_KEYWORDS:
-
-        if keyword in title_lower:
-            return False
-
-    # Bloqueia pelo tipo
-    deal_type = info["type"]
-
-    if deal_type is not None:
-
-        type_text = (
-            str(deal_type)
-            .lower()
-            .strip()
-        )
-
-        blocked_types = [
-            "dlc",
-            "addon",
-            "add-on",
-            "soundtrack",
-            "software",
-            "application",
-            "subscription",
-            "currency",
-            "wallet",
-            "season pass",
-            "expansion",
-        ]
-
-        for blocked in blocked_types:
-
-            if blocked in type_text:
-                return False
-
-    return True
-
-
-# ============================================================
-# BUSCAR PROMOÇÕES DE UMA LOJA
-# ============================================================
-
-def get_deals_for_shop(shop_id):
-
-    url = (
-        "https://api.isthereanydeal.com/"
-        "deals/v2"
+    game_id = game_price.get(
+        "id"
     )
 
-    headers = {
-        "ITAD-API-Key": ITAD_API_KEY,
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-
-        "country": COUNTRY,
-
-        "offset": 0,
-
-        "limit": DEALS_PER_SHOP,
-
-        # Maior desconto primeiro
-        "sort": "price",
-
-        "nondeals": False,
-
-        "mature": False,
-
-        # Uma loja por consulta
-        "shops": [shop_id],
-
-        "filter": {
-            "cut": {
-                "min": MIN_DISCOUNT
-            }
-        }
-    }
-
-    response = requests.post(
-        url,
-        headers=headers,
-        json=payload,
-        timeout=60
+    title = titles.get(
+        game_id
     )
 
-    response.raise_for_status()
+    if not title:
+        continue
 
-    data = response.json()
-
-    if isinstance(data, list):
-        return data
-
-    if isinstance(data, dict):
-
-        deals = data.get("list")
-
-        if isinstance(deals, list):
-            return deals
-
-    return []
-
-
-# ============================================================
-# BUSCAR TODAS AS LOJAS
-# ============================================================
-
-def get_all_deals():
-
-    all_deals = []
-
-    for shop_id, shop_name in SHOPS.items():
-
-        print()
-        print(
-            f"🔎 Buscando {shop_name}..."
-        )
-
-        try:
-
-            deals = get_deals_for_shop(
-                shop_id
-            )
-
-            print(
-                f"   📦 {len(deals)} ofertas encontradas"
-            )
-
-            all_deals.extend(
-                deals
-            )
-
-        except Exception as error:
-
-            print(
-                f"   ❌ Erro em {shop_name}: "
-                f"{error}"
-            )
-
-    return all_deals
-
-
-# ============================================================
-# FILTRAR OFERTAS
-# ============================================================
-
-def filter_deals(deals):
-
-    filtered = []
+    deals = parse_price_game(
+        game_price
+    )
 
     for deal in deals:
 
-        info = extract_deal(deal)
+        deal["title"] = title
 
-        if not info:
-            continue
-
-        title = info["title"]
-
-        # Windows
-        if not is_windows_game(deal):
-
-            print(
-                f"⏭️ Sem Windows: {title}"
+        deal["popularity_position"] = (
+            popularity_position.get(
+                game_id,
+                999999
             )
+        )
 
-            continue
-
-        # Somente jogos
-        if not is_game(deal):
-
-            print(
-                f"⏭️ Não é jogo: {title}"
-            )
-
-            continue
-
-        # Desconto
-        if info["discount"] < MIN_DISCOUNT:
-
-            continue
-
-        # Preço
-        price = info["current_price"]
-
-        if price is None:
-
-            continue
-
-        if float(price) > MAX_PRICE:
-
-            continue
-
-        filtered.append(
+        result.append(
             deal
         )
 
-    return filtered
+return result
 
 
 # ============================================================
-# REMOVER DUPLICATAS DA MESMA LOJA
+# AGRUPAR PARA O DISCORD
 # ============================================================
 
-def remove_exact_duplicates(deals):
+def group_by_shop(deals):
 
-    unique = {}
 
-    for deal in deals:
+grouped = {}
 
-        info = extract_deal(deal)
+for deal in deals:
 
-        if not info:
-            continue
+    shop = deal["shop"]
 
-        title = normalize_title(
-            info["title"]
-        )
+    if shop not in grouped:
+        grouped[shop] = []
 
-        shop_id = info["shop_id"]
-
-        price = info["current_price"]
-
-        key = (
-            title,
-            shop_id,
-            price
-        )
-
-        if key not in unique:
-
-            unique[key] = deal
-
-    return list(
-        unique.values()
+    grouped[shop].append(
+        deal
     )
+
+return grouped
 
 
 # ============================================================
 # ORDENAR
 # ============================================================
 
-def sort_deals(deals):
+def sort_shop_deals(deals):
 
-    def sort_key(deal):
 
-        info = extract_deal(deal)
+# Primeiro: jogos mais populares.
+# Depois: maior desconto.
+# Depois: menor preço.
 
-        price = info["current_price"]
-
-        if price is None:
-            price = float("inf")
-
-        return (
-            -info["discount"],
-            price
-        )
-
-    return sorted(
-        deals,
-        key=sort_key
+return sorted(
+    deals,
+    key=lambda deal: (
+        deal["popularity_position"],
+        -deal["discount"],
+        deal["price"]
     )
+)
 
 
 # ============================================================
-# FORMATAR LINHA
+# CRIAR LINHA
 # ============================================================
 
 def format_deal_line(deal):
 
-    info = extract_deal(deal)
 
-    title = info["title"]
+title = deal["title"]
 
-    current_price = info["current_price"]
+price = deal["price"]
 
-    regular_price = info["regular_price"]
+regular = deal["regular"]
 
-    discount = info["discount"]
+discount = deal["discount"]
 
-    url = info["url"]
+url = deal["url"]
 
-    if current_price is not None:
+current_text = format_brl(
+    price
+)
 
-        current_text = format_brl(
-            current_price
-        )
+price_text = (
+    f"💰 **{current_text}**"
+)
 
-    else:
+if (
+    regular is not None
+    and regular > price
+):
 
-        current_text = "Grátis"
-
-    price_text = (
-        f"💰 **{current_text}**"
+    price_text += (
+        f" ~~{format_brl(regular)}~~"
     )
 
-    if (
-        regular_price is not None
-        and current_price is not None
-        and regular_price > current_price
-    ):
+if url:
 
-        price_text += (
-            f" ~~{format_brl(regular_price)}~~"
-        )
-
-    if url:
-
-        title_text = (
-            f"[🎮 **{title}**]({url})"
-        )
-
-    else:
-
-        title_text = (
-            f"🎮 **{title}**"
-        )
-
-    return (
-        f"{title_text} — "
-        f"{price_text} — "
-        f"📉 **{discount:g}% OFF**"
+    title_text = (
+        f"[🎮 **{title}**]({url})"
     )
+
+else:
+
+    title_text = (
+        f"🎮 **{title}**"
+    )
+
+return (
+    f"{title_text} — "
+    f"{price_text} — "
+    f"📉 **{discount:g}% OFF**"
+)
 
 
 # ============================================================
-# ENVIAR UMA LOJA PARA O DISCORD
+# ENVIAR UMA LOJA
 # ============================================================
 
 def send_shop_to_discord(
-    shop_name,
-    deals
+shop_name,
+deals
 ):
 
-    if not deals:
-        return
 
-    # Discord tem limite de 2000 caracteres.
-    # Deixamos margem para segurança.
-    chunks = []
+if not deals:
+    return
 
-    current_lines = []
+lines = []
 
-    current_length = 0
+header = (
+    f"🎮 **Promoções — {shop_name}**"
+)
 
-    # Cabeçalho
-    header = (
-        f"🎮 **Promoções — {shop_name}**"
+current = [
+    header
+]
+
+length = len(
+    header
+) + 1
+
+for deal in deals:
+
+    line = format_deal_line(
+        deal
     )
 
-    current_lines.append(
-        header
+    line_length = (
+        len(line) + 1
     )
 
-    current_length = len(
-        header
-    ) + 1
+    if (
+        current
+        and length + line_length > 1800
+    ):
 
-    for deal in deals:
-
-        line = format_deal_line(
-            deal
-        )
-
-        line_length = (
-            len(line) + 1
-        )
-
-        if (
-            current_lines
-            and current_length + line_length > 1800
-        ):
-
-            chunks.append(
-                "\n".join(
-                    current_lines
-                )
-            )
-
-            current_lines = [
-                f"🎮 **Promoções — {shop_name}**"
-            ]
-
-            current_length = (
-                len(current_lines[0])
-                + 1
-            )
-
-        current_lines.append(
-            line
-        )
-
-        current_length += line_length
-
-    if current_lines:
-
-        chunks.append(
+        lines.append(
             "\n".join(
-                current_lines
+                current
             )
         )
 
-    # Envia cada bloco
-    for chunk in chunks:
+        current = [
+            header
+        ]
 
-        response = requests.post(
-            DISCORD_WEBHOOK_URL,
-            json={
-                "content": chunk
-            },
-            timeout=30
+        length = (
+            len(header) + 1
         )
 
-        response.raise_for_status()
+    current.append(
+        line
+    )
+
+    length += line_length
+
+if current:
+
+    lines.append(
+        "\n".join(current)
+    )
+
+for message in lines:
+
+    response = requests.post(
+        DISCORD_WEBHOOK_URL,
+        json={
+            "content": message
+        },
+        timeout=30
+    )
+
+    response.raise_for_status()
 
 
 # ============================================================
@@ -776,283 +663,223 @@ def send_shop_to_discord(
 
 def main():
 
+
+print()
+print(
+    "=========================================="
+)
+print(
+    "       BOT DE PROMOÇÕES DE PC"
+)
+print(
+    "=========================================="
+)
+
+if not ITAD_API_KEY:
+    raise RuntimeError(
+        "ITAD_API_KEY não configurado."
+    )
+
+if not DISCORD_WEBHOOK_URL:
+    raise RuntimeError(
+        "DISCORD_WEBHOOK_URL não configurado."
+    )
+
+print()
+print(
+    f"⭐ Buscando os "
+    f"{POPULAR_GAMES} jogos mais populares..."
+)
+
+popular_games = get_popular_games()
+
+print(
+    f"✅ {len(popular_games)} jogos populares encontrados."
+)
+
+if not popular_games:
+    raise RuntimeError(
+        "Nenhum jogo popular foi encontrado."
+    )
+
+game_ids = [
+    game["id"]
+    for game in popular_games
+]
+
+print()
+print(
+    "💰 Buscando promoções "
+    f"em até {len(SHOPS)} lojas..."
+)
+
+price_data = get_prices(
+    game_ids
+)
+
+print(
+    f"✅ {len(price_data)} jogos retornaram preços."
+)
+
+# --------------------------------------------------------
+# Transformar preços em ofertas
+# --------------------------------------------------------
+
+deals = build_deal_list(
+    popular_games,
+    price_data
+)
+
+print()
+print(
+    f"🎯 Ofertas que passaram pelos filtros: "
+    f"{len(deals)}"
+)
+
+# --------------------------------------------------------
+# Ordenação geral
+# --------------------------------------------------------
+
+deals = sorted(
+    deals,
+    key=lambda deal: (
+        deal["popularity_position"],
+        -deal["discount"],
+        deal["price"]
+    )
+)
+
+# Limite geral
+deals = deals[:MAX_DEALS]
+
+# --------------------------------------------------------
+# Histórico
+# --------------------------------------------------------
+
+posted = load_posted()
+
+new_deals = []
+
+for deal in deals:
+
+    title_key = normalize_title(
+        deal["title"]
+    )
+
+    deal_id = (
+        f"{title_key}|"
+        f"{deal['shop_id']}|"
+        f"{deal['price']}"
+    )
+
+    if deal_id in posted:
+        continue
+
+    deal["_id"] = deal_id
+
+    new_deals.append(
+        deal
+    )
+
+print(
+    f"🆕 Novas ofertas: "
+    f"{len(new_deals)}"
+)
+
+# --------------------------------------------------------
+# Agrupar por loja
+# --------------------------------------------------------
+
+grouped = group_by_shop(
+    new_deals
+)
+
+published = 0
+
+shop_order = [
+    "Steam",
+    "Nuuvem",
+    "GOG"
+]
+
+# --------------------------------------------------------
+# Publicar
+# --------------------------------------------------------
+
+for shop_name in shop_order:
+
+    shop_deals = grouped.get(
+        shop_name,
+        []
+    )
+
+    if not shop_deals:
+        continue
+
+    shop_deals = sort_shop_deals(
+        shop_deals
+    )
+
     print()
     print(
-        "=========================================="
+        f"📨 Enviando "
+        f"{len(shop_deals)} ofertas "
+        f"de {shop_name}..."
     )
 
-    print(
-        "       BOT DE PROMOÇÕES DE PC"
-    )
+    try:
 
-    print(
-        "=========================================="
-    )
-
-    # --------------------------------------------------------
-    # Verificar secrets
-    # --------------------------------------------------------
-
-    if not ITAD_API_KEY:
-
-        raise RuntimeError(
-            "ITAD_API_KEY não configurado."
-        )
-
-    if not DISCORD_WEBHOOK_URL:
-
-        raise RuntimeError(
-            "DISCORD_WEBHOOK_URL não configurado."
-        )
-
-    # --------------------------------------------------------
-    # Configuração atual
-    # --------------------------------------------------------
-
-    print()
-    print(
-        f"📉 Desconto mínimo: "
-        f"{MIN_DISCOUNT}%"
-    )
-
-    print(
-        f"💰 Preço máximo: "
-        f"{format_brl(MAX_PRICE)}"
-    )
-
-    print(
-        f"📦 Máximo publicado: "
-        f"{MAX_DEALS}"
-    )
-
-    print(
-        "🪟 Plataforma: Windows"
-    )
-
-    print(
-        "🎮 Tipo: Jogos"
-    )
-
-    # --------------------------------------------------------
-    # Buscar lojas separadamente
-    # --------------------------------------------------------
-
-    deals = get_all_deals()
-
-    print()
-    print(
-        f"📦 Total recebido: "
-        f"{len(deals)} ofertas"
-    )
-
-    # --------------------------------------------------------
-    # Filtrar
-    # --------------------------------------------------------
-
-    filtered = filter_deals(
-        deals
-    )
-
-    print()
-    print(
-        f"✅ Ofertas válidas: "
-        f"{len(filtered)}"
-    )
-
-    # --------------------------------------------------------
-    # Remover duplicatas exatas
-    # --------------------------------------------------------
-
-    unique = remove_exact_duplicates(
-        filtered
-    )
-
-    print(
-        f"✅ Ofertas únicas: "
-        f"{len(unique)}"
-    )
-
-    # --------------------------------------------------------
-    # Ordenar
-    # --------------------------------------------------------
-
-    sorted_deals = sort_deals(
-        unique
-    )
-
-    # --------------------------------------------------------
-    # Limitar quantidade
-    # --------------------------------------------------------
-
-    sorted_deals = sorted_deals[
-        :MAX_DEALS
-    ]
-
-    # --------------------------------------------------------
-    # Histórico
-    # --------------------------------------------------------
-
-    posted = load_posted()
-
-    new_deals = []
-
-    for deal in sorted_deals:
-
-        info = extract_deal(
-            deal
-        )
-
-        title = info["title"]
-
-        shop = info["shop"]
-
-        price = info["current_price"]
-
-        # Identificador da oferta
-        deal_id = (
-            f"{normalize_title(title)}|"
-            f"{shop.lower()}|"
-            f"{price}"
-        )
-
-        if deal_id in posted:
-
-            print(
-                f"⏭️ Já publicada: "
-                f"{title} - {shop}"
-            )
-
-            continue
-
-        new_deals.append(
-            deal
-        )
-
-    print()
-    print(
-        f"🆕 Novas ofertas: "
-        f"{len(new_deals)}"
-    )
-
-    # --------------------------------------------------------
-    # Agrupar por loja
-    # --------------------------------------------------------
-
-    grouped = {}
-
-    for deal in new_deals:
-
-        info = extract_deal(
-            deal
-        )
-
-        shop = info["shop"]
-
-        if shop not in grouped:
-
-            grouped[shop] = []
-
-        grouped[shop].append(
-            deal
-        )
-
-    # --------------------------------------------------------
-    # Ordem das lojas
-    # --------------------------------------------------------
-
-    shop_order = [
-        "Steam",
-        "Nuuvem",
-        "GOG"
-    ]
-
-    published = 0
-
-    # --------------------------------------------------------
-    # Publicar
-    # --------------------------------------------------------
-
-    for shop_name in shop_order:
-
-        shop_deals = grouped.get(
+        send_shop_to_discord(
             shop_name,
-            []
+            shop_deals
         )
 
-        if not shop_deals:
-            continue
+        for deal in shop_deals:
 
-        print()
+            posted.add(
+                deal["_id"]
+            )
+
+        published += len(
+            shop_deals
+        )
+
         print(
-            f"📨 Publicando "
-            f"{len(shop_deals)} ofertas "
-            f"da {shop_name}..."
+            f"✅ {len(shop_deals)} "
+            f"enviadas."
         )
 
-        try:
+    except Exception as error:
 
-            send_shop_to_discord(
-                shop_name,
-                shop_deals
-            )
+        print(
+            f"❌ Erro em {shop_name}: "
+            f"{error}"
+        )
 
-            for deal in shop_deals:
+# --------------------------------------------------------
+# Salvar histórico
+# --------------------------------------------------------
 
-                info = extract_deal(
-                    deal
-                )
+save_posted(
+    posted
+)
 
-                title = info["title"]
-
-                price = info["current_price"]
-
-                deal_id = (
-                    f"{normalize_title(title)}|"
-                    f"{shop_name.lower()}|"
-                    f"{price}"
-                )
-
-                posted.add(
-                    deal_id
-                )
-
-            published += len(
-                shop_deals
-            )
-
-        except Exception as error:
-
-            print(
-                f"❌ Erro ao publicar "
-                f"{shop_name}: {error}"
-            )
-
-    # --------------------------------------------------------
-    # Salvar histórico
-    # --------------------------------------------------------
-
-    save_posted(
-        posted
-    )
-
-    print()
-    print(
-        "------------------------------------------"
-    )
-
-    print(
-        f"✅ Promoções publicadas: "
-        f"{published}"
-    )
-
-    print(
-        "------------------------------------------"
-    )
+print()
+print(
+    "------------------------------------------"
+)
+print(
+    f"✅ Promoções publicadas: "
+    f"{published}"
+)
+print(
+    "------------------------------------------"
+)
 
 
 # ============================================================
 # EXECUTAR
 # ============================================================
 
-if __name__ == "__main__":
-    main()
+if **name** == "**main**":
+main()

@@ -75,7 +75,6 @@ BLOCKED_KEYWORDS = [
 
 def load_posted():
 
-```
 if not os.path.exists(POSTED_FILE):
     return set()
 

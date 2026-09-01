@@ -91,11 +91,9 @@ try:
 except Exception:
 
     return set()
-```
 
 def save_posted(posted):
 
-```
 # Mantém somente os últimos 1000 registros
 posted_list = list(posted)[-1000:]
 
@@ -111,7 +109,6 @@ with open(
         ensure_ascii=False,
         indent=2
     )
-```
 
 # ============================================================
 
@@ -121,7 +118,6 @@ with open(
 
 def format_brl(value):
 
-```
 if value is None:
     return "Preço indisponível"
 
@@ -131,7 +127,6 @@ return (
     .replace(".", ",")
     .replace("X", ".")
 )
-```
 
 # ============================================================
 
@@ -141,7 +136,6 @@ return (
 
 def normalize_title(title):
 
-```
 if not title:
     return ""
 
@@ -163,7 +157,7 @@ title = re.sub(
 )
 
 return title.strip()
-```
+
 
 # ============================================================
 
@@ -173,7 +167,6 @@ return title.strip()
 
 def get_shop_ids():
 
-```
 url = (
     "https://api.isthereanydeal.com/"
     "service/shops/v1"
@@ -217,7 +210,6 @@ for shop in shops:
         )
 
 return result
-```
 
 # ============================================================
 
@@ -227,7 +219,6 @@ return result
 
 def get_deals(shop_ids):
 
-```
 url = (
     "https://api.isthereanydeal.com/"
     "deals/v2"
@@ -277,7 +268,6 @@ if isinstance(data, dict):
         return deals
 
 return []
-```
 
 # ============================================================
 
@@ -287,7 +277,6 @@ return []
 
 def is_windows_deal(deal):
 
-```
 if not isinstance(deal, dict):
     return False
 
@@ -322,7 +311,6 @@ for platform in platforms:
         return True
 
 return False
-```
 
 # ============================================================
 
@@ -332,7 +320,6 @@ return False
 
 def is_game(deal):
 
-```
 if not isinstance(deal, dict):
     return False
 
@@ -379,7 +366,6 @@ if deal_type is not None:
             return False
 
 return True
-```
 
 # ============================================================
 
@@ -389,7 +375,6 @@ return True
 
 def extract_deal(deal):
 
-```
 game = deal.get(
     "game",
     {}
@@ -480,7 +465,7 @@ return {
     "url": url,
     "raw": deal
 }
-```
+
 
 # ============================================================
 
@@ -490,7 +475,7 @@ return {
 
 def send_to_discord(deal):
 
-```
+
 if not DISCORD_WEBHOOK_URL:
 
     raise RuntimeError(
@@ -569,7 +554,7 @@ response = requests.post(
 )
 
 response.raise_for_status()
-```
+
 
 # ============================================================
 
@@ -579,7 +564,7 @@ response.raise_for_status()
 
 def main():
 
-```
+
 print(
     "=========================================="
 )
@@ -894,7 +879,7 @@ print(
 
 print(
     "------------------------------------------")
-```
+
 
 # ============================================================
 
@@ -904,6 +889,6 @@ print(
 
 if **name** == "**main**":
 
-```
+
 main()
-```
+
